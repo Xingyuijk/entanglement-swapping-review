@@ -77,10 +77,10 @@ function makeLayout() {
   // lanes (TPI, hardware, applications) visually distinct.
   const ordered = papers.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
   return new Map(ordered.map((paper, index) => {
-    const column = index % 8;
-    const row = Math.floor(index / 8);
+    const column = index % 7;
+    const row = Math.floor(index / 7);
     return [paper.id, {
-      x: 30 + column * 315,
+      x: 30 + column * 330,
       y: 30 + row * 400 + laneFor(paper) * 245
     }];
   }));
