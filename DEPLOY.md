@@ -1,6 +1,8 @@
 # GitHub Pages 部署
 
-当前目录已经是无构建步骤的静态站点。建议新建一个独立公开仓库，例如 `entanglement-swapping-review`，不要覆盖已有的 `quantum-storage-review`。
+当前目录已经是无构建步骤的静态站点，已部署到：<https://xingyuijk.github.io/entanglement-swapping-review/>。对应公开仓库为 <https://github.com/Xingyuijk/entanglement-swapping-review>，没有覆盖已有的 `quantum-storage-review`。
+
+下面是从空目录重新部署时的参考命令（当前仓库已经完成这些步骤）：
 
 ```bash
 cd website
@@ -12,4 +14,4 @@ gh api --method POST repos/Xingyuijk/entanglement-swapping-review/pages \
   -f "source[branch]=main" -f "source[path]=/"
 ```
 
-也可以在 GitHub 仓库 Settings → Pages 中选择 `main` branch / root。`index.html` 位于根目录，`.nojekyll` 已包含。仓库名称尚未由用户最终确认，因此本轮没有创建远程仓库或写入 GitHub 外部状态。
+也可以在 GitHub 仓库 Settings → Pages 中选择 `main` branch / root。`index.html` 位于根目录，`.nojekyll` 已包含。
