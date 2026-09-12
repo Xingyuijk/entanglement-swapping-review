@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>纠缠交换与量子 memory 纠缠进展</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles-extra.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">ENTANGLEMENT SWAPPING · 1993–2026</p>
+        <h1>从 event-ready swapping 到 420 km 光纤</h1>
+        <p class="lede">按协议、memory 平台、距离口径和可继续使用性追踪文献关系。节点参数只取同一实验条件中原文明确报告的量，未报告项显示为 <code>-</code>。</p>
+      </div>
+      <div class="hero-stat"><strong id="paperCount">0</strong><span>篇纳入论文</span><small>更新时间：2026-09-12</small></div>
+    </header>
+
+    <section class="toolbar" aria-label="筛选和搜索">
+      <label class="search"><span>搜索</span><input id="search" type="search" placeholder="作者、年份、材料、协议、应用…"></label>
+      <div class="filters" id="filters"></div>
+      <button id="reset" class="ghost">重置</button>
+    </section>
+
+    <section class="workspace">
+      <div class="map-card">
+        <div class="map-head"><div><h2>文献关系图</h2><p>拖拽平移，滚轮缩放；点击节点查看完整参数。边表示继承的瓶颈或实验能力，不表示直接引用关系。</p></div><div class="zoom-buttons"><button id="zoomOut">−</button><button id="zoomReset">100%</button><button id="zoomIn">+</button></div></div>
+        <div class="legend" id="legend"></div>
+        <div class="map-wrap"><svg id="map" viewBox="0 0 1760 500" preserveAspectRatio="xMidYMid meet" role="img" aria-label="纠缠交换文献关系图"><defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs><g id="scene"></g></svg></div>
+        <p class="map-note">横向大致表示年份，纵向表示路线分支；虚线表示应用或工程扩展。距离、保真度和 concurrence 只能在定义相同时比较，详见右侧“比较注意”。</p>
+      </div>
+      <aside class="detail" id="detail" aria-live="polite"></aside>
+    </section>
+
+    <section class="table-card"><div class="table-head"><h2>参数总表</h2><p id="tableCount"></p></div><div class="table-scroll"><table><thead><tr><th>年份 / 论文</th><th>memory / 材料</th><th>光源</th><th>协议</th><th>效率 / 存储</th><th>SPI：P<sub>ent</sub> / C</th><th>TPI：V<sub>HOM</sub> / P<sub>ent</sub> / F</th><th>距离</th></tr></thead><tbody id="rows"></tbody></table></div></section>
+
+    <footer><p>证据入口：<a href="../output/entanglement_swapping_progress_1993_2026.md">本项目综述</a> · <a href="../sources/cards/entanglement_swapping_landmarks_1993_2026.md">文献卡片</a> · <a href="../output/summary_entanglement_swapping.md">项目 summary</a></p><p>本地静态站点，可直接部署到 GitHub Pages；未覆盖的参数不会被推算为实测值。</p></footer>
+  </main>
+  <script src="data.js"></script>
+  <script src="metadata.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
