@@ -1,7 +1,8 @@
 const base = window.ES_DATA;
 const overrides = window.ES_METADATA || {};
-const papers = base.papers.map((paper) => Object.assign({}, paper, overrides[paper.id] || {}));
-const { edges } = base;
+const watchlist = window.ES_WATCHLIST || { papers: [], edges: [] };
+const papers = base.papers.concat(watchlist.papers).map((paper) => Object.assign({}, paper, overrides[paper.id] || {}));
+const edges = base.edges.concat(watchlist.edges);
 
 const svg = document.getElementById("map");
 const scene = document.getElementById("scene");
