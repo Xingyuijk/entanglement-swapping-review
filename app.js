@@ -272,6 +272,17 @@ function overlaps(left, right) {
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
 }
 
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function labelLeaderTarget(anchor, box) {
+  if (anchor.x < box.left) return { x: box.left, y: clamp(anchor.y, box.top + 4, box.bottom - 4) };
+  if (anchor.x > box.right) return { x: box.right, y: clamp(anchor.y, box.top + 4, box.bottom - 4) };
+  if (anchor.y < box.top) return { x: clamp(anchor.x, box.left + 4, box.right - 4), y: box.top };
+  return { x: clamp(anchor.x, box.left + 4, box.right - 4), y: box.bottom };
+}
+
 function placeLabel(anchor, lines, nodeRects, placedLabels) {
   const width = Math.min(225, Math.max(92, Math.max(...lines.map((line) => textWidth(line, 11))) + 16));
   const height = lines.length * 14 + 8;
@@ -321,7 +332,17 @@ function render() {
   });
   const placedLabels = [];
   edgeRecords.forEach(({ route, type, caption }) => {
-    const labelBox = placeLabel(pointAlong(route), wrapLabel(caption), nodeRects, placedLabels);
+    const anchor = pointAlong(route);
+    const labelBox = placeLabel(anchor, wrapLabel(caption), nodeRects, placedLabels);
+    const leaderTarget = labelLeaderTarget(anchor, labelBox);
+    const leader = document.createElementNS(SVG_NS, "path");
+    leader.setAttribute("class", `edge-label-leader ${type}`);
+    leader.setAttribute("d", `M ${anchor.x} ${anchor.y} L ${leaderTarget.x} ${leaderTarget.y}`);
+    scene.appendChild(leader);
+    const anchorMark = document.createElementNS(SVG_NS, "circle");
+    anchorMark.setAttribute("class", `edge-label-anchor ${type}`);
+    anchorMark.setAttribute("cx", anchor.x); anchorMark.setAttribute("cy", anchor.y); anchorMark.setAttribute("r", "3");
+    scene.appendChild(anchorMark);
     const group = document.createElementNS(SVG_NS, "g");
     group.setAttribute("class", `edge-label-group ${type}`);
     const background = document.createElementNS(SVG_NS, "rect");
