@@ -8,6 +8,10 @@ const edges = base.edges.concat(watchlist.edges);
 // quantities as the table, while the edge caption explains what changed.
 const CARD_W = 280;
 const CARD_H = 220;
+const CARD_GAP = 34;
+const MAP_W = 2400;
+const MAP_H = 1900;
+const SVG_NS = "http://www.w3.org/2000/svg";
 const edgeLabels = {
   "zukowski1993>pan1998": "从理论 event-ready 到首次光子交换",
   "pan1998>duan2001": "把光子 BSM 推广到 memory repeater 架构",
@@ -76,43 +80,263 @@ function makeLayout() {
   // grid. This prevents the large cards from colliding while keeping branch
   // lanes (TPI, hardware, applications) visually distinct.
   const ordered = papers.slice().sort((a, b) => (a.x - b.x) || (a.y - b.y));
-  return new Map(ordered.map((paper, index) => {
+  const base = ordered.map((paper, index) => {
     const column = index % 7;
     const row = Math.floor(index / 7);
-    return [paper.id, {
+    return {
+      id: paper.id,
       x: 30 + column * 330,
       y: 30 + row * 400 + laneFor(paper) * 245
-    }];
-  }));
+    };
+  });
+
+  // The old row/lane formula could place two cards in the same column on top
+  // of each other (most visibly Lago-Rivera 2021 and Zhu 2025). Push cards
+  // down only when their actual rectangles collide, preserving the compact
+  // chronological layout everywhere else.
+  const columns = new Map();
+  base.forEach((item) => {
+    const column = Math.round((item.x - 30) / 330);
+    if (!columns.has(column)) columns.set(column, []);
+    columns.get(column).push(item);
+  });
+  columns.forEach((items) => {
+    items.sort((a, b) => a.y - b.y);
+    let nextY = -Infinity;
+    items.forEach((item) => {
+      item.y = Math.max(item.y, nextY);
+      nextY = item.y + CARD_H + CARD_GAP;
+    });
+  });
+  return new Map(base.map(({ id, x, y }) => [id, { x, y }]));
 }
 function setZoom(factor) { state.scale = Math.max(0.55, Math.min(2.8, state.scale * factor)); drawScene(); }
 function drawScene() { scene.setAttribute("transform", `translate(${state.tx} ${state.ty}) scale(${state.scale})`); scene.querySelectorAll(".node").forEach((node) => node.classList.toggle("selected", node.dataset.id === state.selected)); }
+
+function uniqueSorted(values) {
+  return [...new Set(values.map((value) => Math.round(value * 100) / 100))].sort((a, b) => a - b);
+}
+
+function rectFor(position, margin = 0) {
+  return {
+    left: position.x - margin,
+    right: position.x + CARD_W + margin,
+    top: position.y - margin,
+    bottom: position.y + CARD_H + margin
+  };
+}
+
+function segmentClear(a, b, obstacles) {
+  const horizontal = Math.abs(a.y - b.y) < 0.01;
+  const vertical = Math.abs(a.x - b.x) < 0.01;
+  if (!horizontal && !vertical) return false;
+  return !obstacles.some((obstacle) => {
+    if (horizontal) {
+      const left = Math.min(a.x, b.x); const right = Math.max(a.x, b.x);
+      return a.y > obstacle.top && a.y < obstacle.bottom && right > obstacle.left && left < obstacle.right;
+    }
+    const top = Math.min(a.y, b.y); const bottom = Math.max(a.y, b.y);
+    return a.x > obstacle.left && a.x < obstacle.right && bottom > obstacle.top && top < obstacle.bottom;
+  });
+}
+
+function routeEdge(from, to, layout, visible) {
+  const a = layout.get(from.id); const b = layout.get(to.id);
+  const horizontal = Math.abs(b.x - a.x) >= Math.abs(b.y - a.y);
+  const forward = horizontal ? b.x >= a.x : b.y >= a.y;
+  let start; let end; let initialDir;
+  if (horizontal) {
+    start = { x: forward ? a.x + CARD_W : a.x, y: a.y + CARD_H / 2 };
+    end = { x: forward ? b.x : b.x + CARD_W, y: b.y + CARD_H / 2 };
+    initialDir = forward ? 1 : 3;
+  } else {
+    start = { x: a.x + CARD_W / 2, y: forward ? a.y + CARD_H : a.y };
+    end = { x: b.x + CARD_W / 2, y: forward ? b.y : b.y + CARD_H };
+    initialDir = forward ? 2 : 0;
+  }
+
+  const others = visible
+    .filter((paper) => paper.id !== from.id && paper.id !== to.id)
+    .map((paper) => rectFor(layout.get(paper.id), 22));
+  const xs = uniqueSorted([
+    0, MAP_W, start.x, end.x,
+    ...others.flatMap((obstacle) => [obstacle.left, obstacle.right])
+  ]);
+  const ys = uniqueSorted([
+    0, MAP_H, start.y, end.y,
+    ...others.flatMap((obstacle) => [obstacle.top, obstacle.bottom])
+  ]);
+  const startX = xs.indexOf(start.x); const startY = ys.indexOf(start.y);
+  const endX = xs.indexOf(end.x); const endY = ys.indexOf(end.y);
+  const stateKey = (x, y, direction) => `${x},${y},${direction}`;
+  const queue = [{ x: startX, y: startY, direction: -1, cost: 0 }];
+  const distances = new Map([[stateKey(startX, startY, -1), 0]]);
+  const previous = new Map();
+  const directions = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  const points = (x, y) => ({ x: xs[x], y: ys[y] });
+  let finish = null;
+
+  while (queue.length) {
+    queue.sort((left, right) => left.cost - right.cost);
+    const current = queue.shift();
+    if (current.x === endX && current.y === endY) { finish = current; break; }
+    directions.forEach(([dx, dy], nextDirection) => {
+      if (current.direction === -1 && nextDirection !== initialDir) return;
+      const nx = current.x + dx; const ny = current.y + dy;
+      if (nx < 0 || ny < 0 || nx >= xs.length || ny >= ys.length) return;
+      const here = points(current.x, current.y); const next = points(nx, ny);
+      if (!segmentClear(here, next, others)) return;
+      const length = Math.abs(next.x - here.x) + Math.abs(next.y - here.y);
+      const turnPenalty = current.direction >= 0 && current.direction !== nextDirection ? 48 : 0;
+      const cost = current.cost + length + turnPenalty;
+      const key = stateKey(nx, ny, nextDirection);
+      if (cost >= (distances.get(key) ?? Infinity)) return;
+      distances.set(key, cost);
+      previous.set(key, stateKey(current.x, current.y, current.direction));
+      queue.push({ x: nx, y: ny, direction: nextDirection, cost });
+    });
+  }
+
+  if (!finish) return [start, end];
+  let key = stateKey(finish.x, finish.y, finish.direction);
+  const path = [];
+  while (key) {
+    const [x, y] = key.split(",").map(Number);
+    path.unshift(points(x, y));
+    key = previous.get(key);
+  }
+  return path;
+}
+
+function simplifyPath(path) {
+  return path.filter((point, index) => {
+    if (index === 0 || index === path.length - 1) return true;
+    const previous = path[index - 1]; const next = path[index + 1];
+    return !((Math.abs(previous.x - point.x) < 0.01 && Math.abs(point.x - next.x) < 0.01)
+      || (Math.abs(previous.y - point.y) < 0.01 && Math.abs(point.y - next.y) < 0.01));
+  });
+}
+
+function pathD(path) {
+  return simplifyPath(path).map((point, index) => `${index ? "L" : "M"} ${point.x} ${point.y}`).join(" ");
+}
+
+function pointAlong(path, fraction = 0.5) {
+  const segments = path.slice(1).map((point, index) => ({
+    from: path[index], to: point,
+    length: Math.hypot(point.x - path[index].x, point.y - path[index].y)
+  }));
+  const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+  let distance = total * fraction;
+  for (const segment of segments) {
+    if (distance <= segment.length) {
+      const ratio = segment.length ? distance / segment.length : 0;
+      return {
+        x: segment.from.x + (segment.to.x - segment.from.x) * ratio,
+        y: segment.from.y + (segment.to.y - segment.from.y) * ratio,
+        horizontal: Math.abs(segment.to.y - segment.from.y) < 0.01
+      };
+    }
+    distance -= segment.length;
+  }
+  const last = path[path.length - 1]; return { x: last.x, y: last.y, horizontal: true };
+}
+
+function textWidth(text, fontSize = 11) {
+  return [...String(text)].reduce((width, character) => width + (/[^\x00-\x7F]/.test(character) ? fontSize : fontSize * 0.56), 0);
+}
+
+function fitText(text, maxWidth, fontSize = 10.5) {
+  const value = String(text ?? "-").replace(/\s+/g, " ");
+  if (textWidth(value, fontSize) <= maxWidth) return value;
+  let result = "";
+  for (const character of [...value]) {
+    if (textWidth(`${result}${character}…`, fontSize) > maxWidth) break;
+    result += character;
+  }
+  return `${result}…`;
+}
+
+function wrapLabel(text, maxWidth = 205) {
+  const lines = []; let line = "";
+  [...String(text)].forEach((character) => {
+    if (line && textWidth(`${line}${character}`, 11) > maxWidth) { lines.push(line); line = ""; }
+    line += character;
+  });
+  if (line) lines.push(line);
+  if (lines.length <= 2) return lines;
+  return [lines[0], fitText(lines.slice(1).join(""), maxWidth - 10, 11)];
+}
+
+function overlaps(left, right) {
+  return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
+}
+
+function placeLabel(anchor, lines, nodeRects, placedLabels) {
+  const width = Math.min(225, Math.max(92, Math.max(...lines.map((line) => textWidth(line, 11))) + 16));
+  const height = lines.length * 14 + 8;
+  // Same-row edges run through the narrow gap between two cards. Their text
+  // must therefore be lifted above or below the whole card row, not merely
+  // nudged a few pixels away from the path.
+  const candidates = [
+    [0, -150], [0, 150], [0, -105], [0, 105], [0, -70], [0, 70],
+    [-80, -150], [80, -150], [-80, 150], [80, 150],
+    [-80, -70], [80, -70], [-80, 70], [80, 70], [-120, 0], [120, 0]
+  ];
+  for (const [dx, dy] of candidates) {
+    const left = Math.max(4, Math.min(MAP_W - width - 4, anchor.x - width / 2 + dx));
+    const top = Math.max(4, Math.min(MAP_H - height - 4, anchor.y - height / 2 + dy));
+    const box = { left, right: left + width, top, bottom: top + height };
+    if (nodeRects.some((rect) => overlaps(box, rect)) || placedLabels.some((rect) => overlaps(box, rect))) continue;
+    placedLabels.push(box);
+    return { ...box, lines };
+  }
+  const left = Math.max(4, Math.min(MAP_W - width - 4, anchor.x - width / 2));
+  const top = Math.max(4, Math.min(MAP_H - height - 4, anchor.y - height / 2));
+  const box = { left, right: left + width, top, bottom: top + height };
+  placedLabels.push(box);
+  return { ...box, lines };
+}
+
 function render() {
   const visible = papers.filter(matches);
   document.getElementById("tableCount").textContent = `${visible.length} / ${papers.length} 篇可见`;
   scene.innerHTML = "";
   const byId = new Map(papers.map((paper) => [paper.id, paper]));
   const layout = makeLayout();
+  const nodeRects = visible.map((paper) => rectFor(layout.get(paper.id), 5));
+  const edgeRecords = [];
   edges.map(edgeRecord).forEach(({ from, to, type }) => {
     const a = byId.get(from); const b = byId.get(to);
     if (!a || !b || !matches(a) || !matches(b)) return;
-    const pa = layout.get(a.id); const pb = layout.get(b.id);
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const forward = pb.x >= pa.x;
-    const x1 = forward ? pa.x + CARD_W : pa.x; const y1 = pa.y + CARD_H / 2;
-    const x2 = forward ? pb.x : pb.x + CARD_W; const y2 = pb.y + CARD_H / 2;
-    const bend = Math.max(55, Math.abs(x2 - x1) * 0.38);
-    const c1x = x1 + (forward ? bend : -bend); const c2x = x2 - (forward ? bend : -bend);
-    path.setAttribute("d", `M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`);
+    const route = routeEdge(a, b, layout, visible);
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", pathD(route));
     path.setAttribute("class", `edge ${type}`); scene.appendChild(path);
+    path.dataset.from = from;
+    path.dataset.to = to;
     const key = `${from}>${to}`;
     const caption = shortLine((edgeLabels[key] || ({ protocol: "协议/架构继承", metric: "参数或距离提升", hardware: "实验技术改进", application: "应用扩展" }[type] || "关系")), 46);
-    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    edgeRecords.push({ route, type, caption });
+  });
+  const placedLabels = [];
+  edgeRecords.forEach(({ route, type, caption }) => {
+    const labelBox = placeLabel(pointAlong(route), wrapLabel(caption), nodeRects, placedLabels);
+    const group = document.createElementNS(SVG_NS, "g");
+    group.setAttribute("class", `edge-label-group ${type}`);
+    const background = document.createElementNS(SVG_NS, "rect");
+    background.setAttribute("class", "edge-label-bg");
+    background.setAttribute("x", labelBox.left); background.setAttribute("y", labelBox.top);
+    background.setAttribute("width", labelBox.right - labelBox.left); background.setAttribute("height", labelBox.bottom - labelBox.top);
+    const label = document.createElementNS(SVG_NS, "text");
     label.setAttribute("class", `edge-label ${type}`);
-    label.setAttribute("x", (x1 + 3 * c1x + 3 * c2x + x2) / 8);
-    label.setAttribute("y", (y1 + 3 * y1 + 3 * y2 + y2) / 8 - 8);
-    label.textContent = caption;
-    scene.appendChild(label);
+    label.setAttribute("x", labelBox.left + 8); label.setAttribute("y", labelBox.top + 14);
+    labelBox.lines.forEach((line, index) => {
+      const tspan = document.createElementNS(SVG_NS, "tspan");
+      tspan.setAttribute("x", labelBox.left + 8); tspan.setAttribute("dy", index ? 14 : 0); tspan.textContent = line;
+      label.appendChild(tspan);
+    });
+    group.append(background, label); scene.appendChild(group);
   });
   visible.forEach((paper) => {
     const pos = layout.get(paper.id);
@@ -129,8 +353,8 @@ function render() {
       `distance: ${paper.distance}`,
       `app: ${paper.applications.join(" / ")}`,
       `feature: ${paper.features}`
-    ].map((line) => shortLine(line));
-    node.classList.add("node"); node.dataset.id = paper.id; node.setAttribute("transform", `translate(${pos.x} ${pos.y})`);
+    ].map((line, index) => fitText(line, CARD_W - 24, index === 0 ? 13 : 10.5));
+    node.classList.add("node"); node.dataset.id = paper.id; node.setAttribute("transform", `translate(${pos.x} ${pos.y})`); node.setAttribute("clip-path", "url(#node-clip)");
     node.innerHTML = `<rect class="node-card" width="${CARD_W}" height="${CARD_H}"></rect>${lines.map((line, index) => `<text class="${index === 0 ? "node-title" : "node-line"}" x="12" y="${20 + index * 18}">${esc(line)}</text>`).join("")}`;
     node.addEventListener("click", () => select(paper.id)); scene.appendChild(node);
   });
